@@ -1,0 +1,449 @@
+---
+title: "Polarisation"
+author: "Lucia Michielin"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load necessary libraries
+Because Quanteda.Textmodel is not CRAN supported anymore we need to do it directly from GITHUB. When prompted to 'Enter one or more numbers, or an empty line to skip updates:' just enter an empty line
+```{r}
+library(devtools)
+library(quanteda.textmodels)
+devtools::install_github("quanteda/quanteda.textmodels", dependencies = TRUE)
+library(dplyr)
+library(readr)
+library(stringr)
+
+```
+
+# Step 1: Load the data
+
+# I cannot see the file so will need to add it in the repo
+```{r}
+data <- read_csv('un-general-debates.csv') 
+head(data)
+glimpse(data)
+summary(data)
+```
+
+# Step 2: Filter speeches mentioning 'Israel' or 'Palestine'
+
+```{r}
+filtered_data <- data %>%
+  filter(str_detect(text, "Israel|Palestine")) |>
+  mutate(id = paste(year, country, session)) |>
+  select(id, text) 
+```
+
+```{r}
+refs <- data.frame(id = c("pro_isr", "pro_pal"),
+                      text = c("Israel is the only true democracy in the Middle East and should maintain control over its entire historical territory, including Jerusalem. 
+                               The so-called Palestinian territories are breeding grounds for terrorism, and Israel has the right and responsibility to defend itself from these threats. 
+                               Claims against Israel's sovereignty are baseless and threaten peace and stability in the region.",
+                               "The land known as Israel today is, in fact, stolen Palestinian land. 
+                               This is an apartheid state that subjects Palestinians to brutal occupation, denying them basic rights. 
+                               Since the Nakba, Palestinians have been displaced and oppressed. 
+                               Israel, as a state, has no right to exist on occupied Palestinian land, and true peace can only come with its dissolution."))
+
+filtered_data <- rbind(filtered_data, refs) |>
+  mutate(ref_scores = case_when(id == "pro_isr" ~ -10,
+                                id == "pro_pal" ~ 10,
+                                TRUE ~ NA))
+
+filtered_data <- filtered_data |> 
+  mutate(ref_scores = case_when(id == "2006 ISR 61" ~ -10,
+                                id == "2006 PSE 61" ~ 10,
+                                TRUE ~ NA)) 
+```
+
+# Step 3: Preprocess the text using quanteda
+```{r}
+corpus <- quanteda::corpus(filtered_data, 
+                           docid_field = "id",
+                           text_field = "text")
+```
+
+Tokenise Texts
+```{r}
+toks_ger <- tokens(corpus, remove_punct = TRUE)
+```
+
+Create a document-feature matrix
+```{r}
+dfmat_ger <- dfm(toks_ger) %>% 
+  dfm_remove(pattern = stopwords("en"))
+```
+
+Apply Wordscores algorithm to document-feature matrix
+```{r}
+tmod_ws <- textmodel_wordscores(dfmat_ger, 
+                                y = corpus$ref_scores, smooth = 1)
+summary(tmod_ws)
+
+pred_ws <- predict(tmod_ws, se.fit = TRUE, newdata = dfmat_ger)
+
+textplot_scale1d(pred_ws)
+
+pred_ws_df <- data.frame(pred_ws) 
+
+pred_ws_df$doc <- rownames(pred_ws_df)
+
+pred_ws_df$year <- str_extract(pred_ws_df$doc, "^\\d{4}")        
+pred_ws_df$iso_code <- str_extract(pred_ws_df$doc, "(?<=\\d{4} )[A-Z]{3}") 
+
+
+pred_ws_df |> 
+  filter(fit < 2 & fit > -2) |>
+  ggplot(aes(x = fit)) + 
+  geom_density() +
+  facet_wrap(~ year) + 
+  theme_bw()
+```
+
+# Step 2: Identify the threshold for highest and lowest parts
+For example, we can take the top 10% and bottom 10%
+```{r}
+threshold_high <- quantile(pred_ws_df$fit, 0.99)  # 90th percentile
+threshold_low <- quantile(pred_ws_df$fit, 0.01)   # 10th percentile
+```
+
+# Step 3: Filter the predictions based on the thresholds
+```{r}
+trimmed_predictions <- pred_ws_df %>%
+  filter(fit >= threshold_high | fit <= threshold_low) |>
+  arrange(desc(fit))
+
+
+ggplot(trimmed_predictions, 
+       aes(x = fit, y = fct_reorder(doc, fit))) +
+  geom_point()
+```
+
+# Using LSX
+## Install the package
+```{r}
+install.packages("LSX")
+library(LSX)
+```
+## Import the data 
+```{r}
+data <- read_csv('un-general-debates.csv')
+```
+## Filter speeches mentioning 'Israel' or 'Palestine'
+```{r}
+filtered_data <- data %>%
+  filter(str_detect(text, "Israel|Palestine"))
+```
+## Preprocess the text using quanteda
+```{r}
+corpus <- quanteda::corpus(filtered_data, 
+                           text_field = "text")
+```
+## Tokenize text corpus and remove various feature
+```{r}
+corp_sent <- corpus_reshape(corpus, to = "sentences")
+toks_sent <- corp_sent %>% 
+  tokens(remove_punct = TRUE, remove_symbols = TRUE, 
+         remove_numbers = TRUE, remove_url = TRUE) %>% 
+  tokens_remove(stopwords("en", source = "marimo")) %>%
+  tokens_remove(c("*-time", "*-timeUpdated", "GMT", "BST", "*.com"))
+```
+# Create a document feature matrix from the tokens object
+```{r}
+dfmat_sent <- toks_sent %>% 
+  dfm() %>% 
+  dfm_remove(pattern = "") %>% 
+  dfm_trim(min_termfreq = 5)
+
+topfeatures(dfmat_sent, 20)
+```
+
+```{r}
+dictionary <- list(
+  pro_israeli = c("democracy", "Jewish", "freedom", "security", "sovereignty",
+                  "peace", "tolerance", "innovation", "justice", "rights"),
+  anti_israeli = c("genocide", "apartheid", "occupation", "Nakba", "settlements",
+                   "displacement", "oppression", "colonization", "blockade", "resistance")
+)
+
+dictionary_new <- list(
+  pro_israeli = c("democracy in the region", "Jewish rights", "freedom", "security", "sovereignty",
+                  "peace", "tolerance", "innovation", "justice", "rights", "samaria", "judea", "anti-semitism"),
+  anti_israeli = c("genocide", "apartheid", "occupation", "Nakba", "illegal settlements",
+                   "displacement", "oppression", "colonization", "illegal blockade", "resistance")
+)
+
+
+seed <- as.seedwords(dictionary_new)
+print(seed)
+```
+
+Identify context words 
+```{r}
+eco <- char_context(toks_sent, pattern = "israel*", p = 0.05)
+```
+
+Run LSS model
+```{r}
+tmod_lss <- textmodel_lss(dfmat_sent, seeds = seed,
+                          terms = eco, k = 300, cache = TRUE)
+
+
+head(coef(tmod_lss), 20) # most positive words
+
+tail(coef(tmod_lss), 20) # most negative words
+
+textplot_terms(tmod_lss, data_dictionary_LSD2015["positive"])
+
+dfmat_doc <- dfm_group(dfmat_sent)
+dat <- docvars(dfmat_doc)
+dat$fit <- predict(tmod_lss, newdata = dfmat_doc)
+
+dat$date <- as.Date(dat$year)
+
+dat_smooth <- smooth_lss(dat, engine = "locfit")
+
+```
+
+Plot
+```{r}
+plot(dat$year, dat$fit, col = rgb(0, 0, 0, 0.05), pch = 16, ylim = c(-3, 3),
+     xlab = "Time", ylab = "Sentiment: (+) Pro-Israeli | (-) Anti-Israeli)")
+lines(dat_smooth$date, dat_smooth$fit, type = "l")
+lines(dat_smooth$date, dat_smooth$fit + dat_smooth$se.fit * 1.96, type = "l", lty = 3)
+lines(dat_smooth$date, dat_smooth$fit - dat_smooth$se.fit * 1.96, type = "l", lty = 3)
+abline(h = 0, lty = c(1, 2), col = "red")
+
+dat |>
+  group_by(year) |>
+  mutate(mean_fit = mean(fit),
+         sd_fit = sd(fit),
+         distance = fit - mean_fit,
+         minmax = max(fit) - min(fit)) |>
+  ggplot(aes(x = year, y = minmax)) + 
+  geom_point() + 
+  geom_smooth(method = "loess") 
+
+ggplot(dat,aes(x = fit)) +
+  geom_density() +
+  facet_wrap(~ year) +
+  theme_bw() +
+  labs(x = "Score", y = "Density")
+
+```
+## The same for Israel
+
+```{r}
+library(ggridges)
+
+ggplot(dat, aes(x = year, y = fit)) +
+  geom_density_ridges(fill = "lightblue", alpha = 0.5)
+
+# identify context words 
+eco <- char_context(toks_sent, 
+                    pattern = "palestin*", 
+                    p = 0.05)
+
+# run LSS model
+tmod_lss <- textmodel_lss(dfmat_sent, seeds = seed,
+                          terms = eco, k = 300, cache = TRUE)
+
+
+head(coef(tmod_lss), 20) # most positive words
+
+tail(coef(tmod_lss), 20) # most negative words
+
+textplot_terms(tmod_lss, data_dictionary_LSD2015["negative"])
+
+dfmat_doc <- dfm_group(dfmat_sent)
+dat <- docvars(dfmat_doc)
+dat$fit <- predict(tmod_lss, newdata = dfmat_doc)
+
+dat$date <- as.Date(dat$year)
+
+dat_smooth <- smooth_lss(dat, engine = "locfit")
+
+
+plot(dat$year, dat$fit, col = rgb(0, 0, 0, 0.05), pch = 16, ylim = c(-0.5, 0.5),
+     xlab = "Time", ylab = "Sentiments with regards to Israel/Palestine")
+lines(dat_smooth$date, dat_smooth$fit, type = "l")
+lines(dat_smooth$date, dat_smooth$fit + dat_smooth$se.fit * 1.96, type = "l", lty = 3)
+lines(dat_smooth$date, dat_smooth$fit - dat_smooth$se.fit * 1.96, type = "l", lty = 3)
+abline(h = 0, lty = c(1, 2))
+
+
+dat |>
+  ggplot(aes(x = year, y = fit)) +
+  geom_point() + 
+  geom_smooth(method = "loess")
+
+dfmat <- dfm(tokens(corpus, remove_punct = TRUE)) # remove punctuation
+dfm <- dfm_remove(dfmat, stopwords("english")) # remove stopwords
+```
+
+# Prepare reference texts
+```{r}
+pro_israel_ref <- "Israel is the only true democracy in the Middle East and should maintain control over its entire historical territory, including Jerusalem. The so-called Palestinian territories are breeding grounds for terrorism, and Israel has the right and responsibility to defend itself from these threats. Claims against Israel's sovereignty are baseless and threaten peace and stability in the region."
+pro_palestine_ref <- "The land known as Israel today is, in fact, stolen Palestinian land. This is an apartheid state that subjects Palestinians to brutal occupation, denying them basic rights. Since the Nakba, Palestinians have been displaced and oppressed. Israel, as a state, has no right to exist on occupied Palestinian land, and true peace can only come with its dissolution."
+
+reference_texts <- c(pro_israel_ref, pro_palestine_ref)
+
+```
+
+## Create a corpus of reference texts and combine with the main data
+```{r}
+reference_corpus <- corpus(reference_texts, docnames = c("ref1", "ref2"))
+combined_corpus <- c(corpus, reference_corpus)
+```
+
+## Create a Document-Feature Matrix (DFM) for WordScores analysis
+```{r}
+combined_dfmat <- dfm(tokens(combined_corpus, remove_punct = TRUE)) # remove punctuation
+combined_dfm <- dfm_remove(combined_dfmat, stopwords("english"))
+```
+
+## Set reference scores for pro-Israel (-10) and pro-Palestine (10) texts
+```{r}
+reference_scores <- c(-10, 10)
+```
+
+## Fit the WordScores model
+```{r}
+ws_model <- textmodel_wordscores(combined_dfm, scores = reference_scores)
+```
+
+## Predict the scores for the filtered speeches
+```{r}
+predicted_scores <- predict(ws_model, newdata = dfm)
+```
+
+## Attach the scores to the original dataset
+```{r}
+filtered_data <- filtered_data %>%
+  mutate(wordscores = predicted_scores)
+```
+
+## View and save the results
+```{r}
+head(filtered_data)
+write_csv(filtered_data, '/mnt/data/un_general_debates_wordscores.csv')
+```
+
+# Alternative using Wordfish
+
+## Load libraries
+```{r}
+library(quanteda)
+library(quanteda.textmodels)
+library(dplyr)
+library(readr)
+library(stringr)
+
+```
+## Import data
+```{r}
+data <- read_csv('un-general-debates.csv')
+
+```
+## Filter speeches mentioning 'Israel' or 'Palestine'
+```{r}
+filtered_data <- data %>%
+  filter(str_detect(text, "Israel|Palestine"))
+```
+## Prepare reference texts
+```{r}
+pro_israel_ref <- "Israel is the only true democracy in the Middle East and should maintain control over its entire historical territory, including Jerusalem. The so-called Palestinian territories are breeding grounds for terrorism, and Israel has the right and responsibility to defend itself from these threats. Claims against Israel's sovereignty are baseless and threaten peace and stability in the region."
+pro_palestine_ref <- "The land known as Israel today is, in fact, stolen Palestinian land. This is an apartheid state that subjects Palestinians to brutal occupation, denying them basic rights. Since the Nakba, Palestinians have been displaced and oppressed. Israel, as a state, has no right to exist on occupied Palestinian land, and true peace can only come with its dissolution."
+
+reference_texts <- c(pro_israel_ref, pro_palestine_ref)
+
+lines_w_reference <- data.frame(session = c(44,44),
+                                year = c(1989,1989),
+                                country = c("REFPRO", "REFCONT"),
+                                text = c(pro_israel_ref, pro_palestine_ref))
+
+all <- rbind(filtered_data, lines_w_reference) |>
+  mutate(ref_scores = case_when(country == "REFPRO" ~ -10,
+                                country == "REFCONT" ~ 10,
+                                TRUE ~ NA))
+
+corpus <- quanteda::corpus(all$text)
+```
+## Tokenize texts
+```{r}
+toks_ger <- tokens(corp_ger, remove_punct = TRUE)
+```
+## Create a document-feature matrix
+```{r}
+dfmat_ger <- dfm(toks_ger) %>% 
+  dfm_remove(pattern = stopwords("de"))
+```
+## Apply Wordscores algorithm to document-feature matrix
+```{r}
+tmod_ws <- textmodel_wordscores(dfmat_ger, y = corp_ger$ref_score, smooth = 1)
+summary(tmod_ws)
+
+```
+## Preprocess the text using quanteda
+```{r}
+corpus <- quanteda::corpus(all$text)
+dfmat <- dfm(tokens(corpus, remove_punct = TRUE)) # Remove punctuation
+dfm <- dfm_remove(dfmat, stopwords("english")) # Remove stopwords
+```
+## Create a corpus of reference texts and combine with the main data
+```{r}
+reference_corpus <- corpus(reference_texts, docnames = c("ref1", "ref2"))
+combined_corpus <- c(corpus, reference_corpus)
+```
+## Create a Document-Feature Matrix (DFM) for WordScores analysis
+```{r}
+combined_dfmat <- dfm(tokens(combined_corpus, remove_punct = TRUE)) # Remove punctuation
+combined_dfm <- dfm_remove(combined_dfmat, stopwords("english")) # Remove stopwords
+```
+## Set reference scores for pro-Israel (-10) and pro-Palestine (10) texts
+```{r}
+reference_scores <- c(-10, 10)
+```
+## Fit the WordScores model using updated syntax
+```{r}
+ws_model <- textmodel_wordscores(combined_dfm)
+```
+## Predict the scores for the filtered speeches
+```{r}
+predicted_scores <- predict(ws_model, newdata = dfm)
+```
+## Attach the scores to the original dataset
+```{r}
+filtered_data <- filtered_data %>%
+  mutate(wordscores = predicted_scores)
+```
+## View and save the results
+```{r}
+head(filtered_data)
+write_csv(filtered_data, 'un_general_debates_wordscores.csv')
+```
+## Fit the WordScores model
+```{r}
+ws_model <- textmodel_wordscores(combined_dfm)
+```
+## Predict the scores for the filtered speeches
+```{r}
+predicted_scores <- predict(ws_model, newdata = dfm)
+```
+## Attach the scores to the original dataset
+```{r}
+filtered_data <- filtered_data %>%
+  mutate(wordscores = predicted_scores)
+```
+## View and save the results
+```{r}
+head(filtered_data)
+write_csv(filtered_data, 'un_general_debates_wordscores.csv')
+```
+
+THE END
