@@ -16,8 +16,8 @@ The code below will allow you to install and mount the needed packages. Remember
 ```{r }
 # Uncomment the 'install.packages' lines if running the 'library' throws you an error
 #install.packages("tidyverse")   # For data manipulation
-#install.packages("tidytext")    # For text tokenization and sentiment analysis
-#install.packages("textdata")    # For additional sentiment lexicons
+install.packages("tidytext")    # For text tokenization and sentiment analysis
+install.packages("textdata")    # For additional sentiment lexicons
 
 # Load libraries
 library(tidyverse)
@@ -174,7 +174,7 @@ alternative ways of plotting
 library(ggplot2)
 library(tidyr)
 library(dplyr)
-#install.packages("viridis")  # For color scales
+install.packages("viridis")  # For color scales
 library(viridis)
 ```
 Ensure the 'legislature' column is treated as a factor (if it isn't already)
