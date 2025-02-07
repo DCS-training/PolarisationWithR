@@ -5,14 +5,14 @@ date: "`r Sys.Date()`"
 output: html_document
 ---
 
-# Install & Load Required Packages
+### Install & Load Required Packages
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r install-packages, eval=FALSE}
-install.packages("usethis")
+#install.packages("usethis")
 library(usethis)
 library(devtools)
 devtools::install_github("quanteda/quanteda.textmodels", dependencies = TRUE)
@@ -27,18 +27,18 @@ library(quanteda)
 library(ggplot2)
 ```
 
-# Load Dataset
+### Load Dataset
 
 ```{r load-data}
 data <- read_csv("EU-China_resolutions.csv")  # Read CSV file
 head(data)  # View first few rows of the dataset
 ```
 
-# Select Reference Documents and Assign Random Scores
+### Select Reference Documents and Assign Random Scores
 
 ```{r reference-docs}
 set.seed(123)  # Ensure reproducibility
-sample_docs <- data %>% sample_n(10)  # Randomly select 10 documents
+sample_docs <- data %>% sample_n(10)  # Randomly select 50 documents
 
 # Assign random scores between -2 and +2
 df_reference <- sample_docs %>%
@@ -47,14 +47,15 @@ df_reference <- sample_docs %>%
 print(df_reference)  # Display selected texts with assigned scores
 ```
 
-# Merge Randomly Scored Reference Documents with Original Data
+### Merge Randomly Scored Reference Documents with Original Data
 
 ```{r merge-data}
 data <- data %>%
-  left_join(df_reference %>% select(full_text, reference_score), by = "full_text")
+  left_join(df_reference %>%
+              select(full_text, reference_score), by = "full_text")
 ```
 
-# Tokenize Text and Create a Document-Feature Matrix (DFM)
+### Tokenize Text and Create a Document-Feature Matrix (DFM)
 
 ```{r tokenize-text}
 tokens_ref <- tokens(df_reference$full_text, remove_punct = TRUE)
@@ -62,16 +63,19 @@ dfm_ref <- dfm(tokens_ref)
 dfm_ref <- dfm_remove(dfm_ref, pattern = stopwords("en"))  # Remove stopwords
 ```
 
-# Train Wordscores Model
+### Train Wordscores Model
 
 ```{r train-model}
 ws_model <- textmodel_wordscores(dfm_ref, y = df_reference$reference_score)
 ```
 
-# Apply Wordscores Model to Unscored Documents
+### Apply Wordscores Model to Unscored Documents
 
 ```{r apply-model}
-virgin_docs <- data %>% filter(is.na(reference_score)) %>% select(full_text)  # Select unscored docs
+virgin_docs <- data%>% 
+  filter(is.na(reference_score)) %>%
+  select(full_text)  # Select unscored docs
+
 tokens_virgin <- tokens(virgin_docs$full_text, remove_punct = TRUE)
 dfm_virgin <- dfm(tokens_virgin)
 dfm_virgin <- dfm_remove(dfm_virgin, pattern = stopwords("en"))  # Remove stopwords
@@ -79,15 +83,15 @@ dfm_virgin <- dfm_remove(dfm_virgin, pattern = stopwords("en"))  # Remove stopwo
 predicted_scores <- predict(ws_model, newdata = dfm_virgin)  # Predict scores
 ```
 
-# Assign Predicted Scores to Data and Save
+### Assign Predicted Scores to Data and Save
 
 ```{r assign-predictions}
 data$predicted_score <- NA  # Initialize predicted score column
 data$predicted_score[is.na(data$reference_score)] <- predicted_scores  # Assign predictions
-write_csv(data, "EU-China_resolutions_with_scores.csv")  # Save updated dataset
+write_csv(data, "EU-China_with_scores.csv")  # Save updated dataset
 ```
 
-# Visualize the Polarization Distribution
+### Visualize the Polarization Distribution
 
 ```{r plot-distribution}
 ggplot(data, aes(x = predicted_score)) +
@@ -98,13 +102,15 @@ ggplot(data, aes(x = predicted_score)) +
         axis.title = element_text(face = "bold"),
         axis.text = element_text(size = 12))
 ```
-# 10. Repeat Process with Fixed Reference Documents
+
+### Repeat Process with Fixed Reference Documents
 
 ```{r fixed-reference}
 data <- read_csv("EU-China_resolutions.csv")  # Reload original dataset
 
 # Ensure reference documents exist in dataset based on "resolution code"
-df_fixed_reference <- data %>% filter(resolution_code %in% c("P4_1998/0293", "P6_2009/0053"))
+df_fixed_reference <- data %>%
+  filter(resolution_code %in% c("P4_1998/0293", "P6_2009/0053"))
 
 # Check if documents exist before proceeding
 if (nrow(df_fixed_reference) < 2) {
@@ -131,7 +137,9 @@ if (nfeat(dfm_fixed_ref) == 0) {
 ws_fixed_model <- textmodel_wordscores(dfm_fixed_ref, y = df_fixed_reference$reference_score)
 
 # Apply Model to Unscored Documents
-virgin_docs_fixed <- data %>% filter(!resolution_code %in% c("P4_1998/0293", "P6_2009/0053")) %>% select(full_text)
+virgin_docs_fixed <- data %>% filter(!resolution_code %in% c("P4_1998/0293", "P6_2009/0053")) %>%
+  select(full_text)
+
 tokens_virgin_fixed <- tokens(virgin_docs_fixed$full_text, remove_punct = TRUE)
 dfm_virgin_fixed <- dfm(tokens_virgin_fixed)
 dfm_virgin_fixed <- dfm_remove(dfm_virgin_fixed, pattern = stopwords("en"))

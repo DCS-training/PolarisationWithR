@@ -12,10 +12,10 @@ knitr::opts_chunk$set(echo = TRUE)
 ## 1. Install & Load Required Packages
 
 ```{r}
-install.packages("usethis")
+#install.packages("usethis")
 library(usethis)
 library(devtools)
-devtools::install_github("quanteda/quanteda.textmodels", dependencies = TRUE)
+#devtools::install_github("quanteda/quanteda.textmodels", dependencies = TRUE)
 library(dplyr)
 library(readr)
 library(stringr)
@@ -27,8 +27,11 @@ library(ggplot2)
 ## 2. Load Dataset
 
 ```{r}
+
 data <- read_csv("EU-China_resolutions.csv")  # Read CSV file
 head(data)  # View first few rows of the dataset
+glimpse(data)
+
 ```
 
 ## 3. Tokenize Text and Create a Document-Feature Matrix (DFM)
@@ -65,7 +68,7 @@ data$wordfish_score <- wordfish_scores  # Store scores in dataset
 ## 6. Save Updated Dataset
 
 ```{r}
-write_csv(data, "EU-China_resolutions_with_wordfish_scores.csv")
+write_csv(data, "EU-China_with_wordfish_scores.csv")
 ```
 
 ## 7. Visualize the Polarization Distribution
@@ -74,12 +77,15 @@ write_csv(data, "EU-China_resolutions_with_wordfish_scores.csv")
 ggplot(data, aes(x = wordfish_score)) +
   geom_histogram(binwidth = 0.5, fill = "green", alpha = 0.6) +  # Plot histogram
   theme_minimal() +  # Apply minimal theme
-  labs(title = "Polarization of EU-China Resolutions (Wordfish)", x = "Wordfish Score", y = "Count")
+  labs(title = "Polarization of UNN debate(Wordfish)", x = "Wordfish Score", y = "Count")
 ```
 
 ## 8. Find the Document with the Lowest Wordfish Score
 
 ```{r}
-min_index <- which.min(data$wordfish_score)
-min_doc <- data[min_index, "full_text"]  # Extract the document
-print(min_doc)  # Display its content
+min_index<- which.min(data$wordfish_score) 
+min_doc <- data[min_index, "full_text"] # Extract the document print(min_doc) \# Display its content
+
+min_index
+min_doc
+```
