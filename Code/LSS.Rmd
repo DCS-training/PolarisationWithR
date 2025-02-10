@@ -1,0 +1,98 @@
+---
+title: "Lexical Scaling Analysis (LSS) in R"
+author: "Your Name"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 1️⃣ Install & Load Required Packages
+
+```{r}
+install.packages("LSX")  # Install LSX package if not installed
+library(LSX)
+library(quanteda)
+library(quanteda.textmodels)
+library(readr)
+library(dplyr)
+library(ggplot2)
+```
+
+## 2️⃣ Load the Dataset
+
+```{r}
+data <- read_csv("EU-China_resolutions.csv")  # Load dataset
+head(data)  # Preview dataset
+```
+
+## 3️⃣ Tokenize & Preprocess the Text
+
+```{r}
+tokens_all <- tokens(data$full_text, remove_punct = TRUE) %>%
+  tokens_tolower() %>%
+  tokens_remove(pattern = stopwords("en")) %>%
+  tokens_remove(pattern = "[0-9]+")  # Remove numbers
+
+dfm_all <- dfm(tokens_all)  # Create document-feature matrix (DFM)
+dfm_all <- dfm_trim(dfm_all, min_termfreq = 2, min_docfreq = 2)  # Remove rare words
+```
+
+## 4️⃣ Define Seed Words for Scaling
+
+```{r}
+seeds <- c(
+  "democracy" = 1, "human_rights" = 1, "cooperation" = 1, "agreement" = 1, "alliance" = 1,
+  "censorship" = -1, "repression" = -1, "sanctions" = -1, "conflict" = -1, "violation" = -1
+)
+```
+
+## 5️⃣ Fit the LSS Model
+
+```{r}
+# Fit the LSS model with fixed 'seeds' and 'k'
+lss_model <- textmodel_lss(dfm_all, seeds = seeds, k = 10)
+
+# Print model summary
+print(lss_model)
+
+# Print the first few words with their LSS scores
+print(head(lss_model))
+```
+
+## 6️⃣ Score the Documents
+
+```{r}
+data$lss_score <- predict(lss_model, newdata = dfm_all)
+
+# Preview scores
+head(data$lss_score)
+```
+
+## 7️⃣ Save Updated Dataset
+
+```{r}
+write_csv(data, "EU-China_resolutions_with_LSS_scores.csv")
+```
+
+## 8️⃣ Visualize the Scaling Results
+
+```{r}
+ggplot(data, aes(x = lss_score)) +
+  geom_histogram(binwidth = 0.2, fill = "blue", alpha = 0.6) +
+  theme_minimal() +
+  labs(title = "Lexical Scaling Analysis (LSS) of EU-China Resolutions",
+       x = "LSS Score", y = "Count")
+```
+
+## 9️⃣ Top Words by LSS Score
+
+```{r}
+textplot_terms(lss_model, n = 20)
+
+top_positive <- data %>% arrange(desc(lss_score)) %>% head(5)
+top_negative <- data %>% arrange(lss_score) %>% head(5)
+print(top_positive$full_text)  # Most positively scored documents
+print(top_negative$full_text)  # Most negatively scored documents

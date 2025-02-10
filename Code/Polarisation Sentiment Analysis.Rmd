@@ -1,0 +1,236 @@
+---
+title: "Polarisation Sentiment Analysis"
+author: "Lucia Michielin"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Setting Up
+
+The code below will allow you to install and mount the needed packages. Remember that you need to install the packages only once but you need to load/mount them (using the library command) every time you open the notebook.
+
+```{r }
+# Uncomment the 'install.packages' lines if running the 'library' throws you an error
+#install.packages("tidyverse")   # For data manipulation
+install.packages("tidytext")    # For text tokenization and sentiment analysis
+install.packages("textdata")    # For additional sentiment lexicons
+
+# Load libraries
+library(tidyverse)
+library(tidytext)
+library(textdata)
+```
+
+Now that we have all the packages we need let's import the dataset and have a look of what is inside it
+
+#ADD SOMETHING HERE ABOUT THE DATASET. WHAT IS IT ETC
+
+```{r}
+resolutions_data <- read_csv("EU-China_resolutions.csv")
+head(resolutions_data)
+glimpse(resolutions_data)
+summary(resolutions_data)
+```
+
+
+## Data set up
+The first step we need to do is to tokenise our 'full-text' column. Tokenization in text analysis is the process of breaking down text into smaller components, typically words, which serve as the basic units for further processing tasks. This step is foundational for enabling subsequent analyses  
+
+```{r tokenise}
+tokenized_data <- resolutions_data %>%
+  unnest_tokens(word, full_text)
+```
+
+## Sentiment Analysis
+
+Perform Sentiment Analysis with Multiple Lexicons 
+
+### "bing" Sentiment Lexicon
+
+```{r}
+bing_sentiment <- tokenized_data %>%
+  inner_join(get_sentiments("bing"), by = "word") %>%
+  count(resolution_code, sentiment, sort = TRUE) %>%
+  spread(sentiment, n, fill = 0) %>%
+  mutate(sentiment_score = positive - negative)
+```
+
+### "afinn" Sentiment Lexicon
+
+```{r}
+afinn_sentiment <- tokenized_data %>%
+  inner_join(get_sentiments("afinn"), by = "word") %>%
+  group_by(resolution_code) %>%
+  summarize(sentiment_score = sum(value, na.rm = TRUE))
+```
+
+### "nrc" Sentiment Lexicon
+```{r}
+nrc_sentiment <- tokenized_data %>%
+  inner_join(get_sentiments("nrc"), by = "word") %>%
+  count(resolution_code, sentiment, sort = TRUE) %>%
+  mutate(sentiment = paste0("NRC_", sentiment)) %>%  # Prefix NRC to distinguish categories
+  spread(sentiment, n, fill = 0) %>%
+  mutate(nrc_score = NRC_positive - NRC_negative)  # Combine positive and negative for a single score
+```
+
+### "loughran" Sentiment Lexicon
+```{r}
+loughran_sentiment <- tokenized_data %>%
+  inner_join(get_sentiments("loughran"), by = "word") %>%
+  count(resolution_code, sentiment, sort = TRUE) %>%
+  mutate(sentiment = paste0("Loughran_", sentiment)) %>%  # Prefix Loughran to distinguish categories
+  spread(sentiment, n, fill = 0) %>%
+  mutate(loughran_score = Loughran_positive - Loughran_negative)  # Combine positive and negative for a single score
+```
+
+### Combine Sentiment Results
+Example of combining results from multiple lexicons into a single data frame
+```{r}
+combined_sentiments <- resolutions_data %>%
+  left_join(bing_sentiment %>% select(resolution_code, bing_score = sentiment_score), by = "resolution_code") %>%
+  left_join(afinn_sentiment %>% select(resolution_code, afinn_score = sentiment_score), by = "resolution_code") %>%
+  left_join(nrc_sentiment %>% select(resolution_code, nrc_score), by = "resolution_code") %>%
+  left_join(loughran_sentiment %>% select(resolution_code, loughran_score), by = "resolution_code")
+```
+
+
+
+### Save the Combined Sentiment Results
+Save the combined sentiment results to a CSV file
+```{r}
+write_csv(combined_sentiments, "EU-China_combined_sentiment_scores.csv")
+```
+
+
+### Inspect the Combined Sentiment Results 
+Print combined sentiment scores (bing, afinn, nrc, loughran)
+```{r}
+print(combined_sentiments %>% select(resolution_code, bing_score, afinn_score, nrc_score, loughran_score))
+```
+
+
+
+## Faceted Graph with 90 Plots
+Normalize sentiment scores by resolution length and create 90 faceted plots
+```{r, fig.width=12, fig.height=10}
+combined_sentiments <- combined_sentiments %>%
+  mutate(resolution_length = str_count(full_text, "\\S+")) %>%  # Calculate resolution length (number of words)
+  mutate(
+    bing_score_normalized = bing_score / resolution_length,
+    afinn_score_normalized = afinn_score / resolution_length,
+    nrc_score_normalized = nrc_score / resolution_length,
+    loughran_score_normalized = loughran_score / resolution_length
+  )
+
+combined_sentiments %>%
+  pivot_longer(cols = c(bing_score_normalized, afinn_score_normalized, nrc_score_normalized, loughran_score_normalized), 
+               names_to = "lexicon", values_to = "score") %>%
+  filter(!is.na(score) & resolution_code != "PNA_NA/NA") %>%  # Remove NA values and plot for resolution_code PNA_NA/NA
+  ggplot(aes(x = lexicon, y = score, fill = lexicon)) +
+  geom_bar(stat = "identity", position = "dodge", show.legend = FALSE) +
+  facet_wrap(~resolution_code, ncol = 10) +
+  labs(title = "Normalized Sentiment Scores Across Resolutions", x = "Lexicon", y = "Normalized Score") +
+  theme_minimal() +
+  theme(strip.text = element_text(size = 8), axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+### PLOTTING BY LEGISLATURE
+
+Ensure the 'legislature' column is treated as a factor (if it isn't already)
+```{r}
+combined_sentiments <- combined_sentiments %>%
+  mutate(legislature = as.factor(legislature))  # Convert legislature to factor for proper ordering
+```
+
+Pivot data longer to have sentiment scores as one column and lexicons as another
+```{r}
+combined_sentiments_long <- combined_sentiments %>%
+  pivot_longer(cols = c(bing_score, afinn_score, nrc_score, loughran_score), 
+               names_to = "lexicon", values_to = "score") %>%
+  filter(!is.na(score))  # Remove NAs
+
+```
+
+Plot sentiment score per legislature for each lexicon
+```{r, fig.width=12, fig.height=10}
+ggplot(combined_sentiments_long, aes(x = legislature, y = score, color = lexicon)) +
+  geom_line() +  # Use lines to visualize the trend over different legislatures
+  facet_wrap(~lexicon, ncol = 1, scales = "free_y") +  # Facet by lexicon
+  labs(title = "Sentiment Score Evolution Per Legislature", x = "Legislature", y = "Sentiment Score") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+alternative ways of plotting
+
+```{r}
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+install.packages("viridis")  # For color scales
+library(viridis)
+```
+Ensure the 'legislature' column is treated as a factor (if it isn't already)
+```{r}
+combined_sentiments <- combined_sentiments %>%
+  mutate(legislature = as.factor(legislature))  # Convert legislature to factor for proper ordering
+```
+
+Pivot data longer to have sentiment scores as one column and lexicons as another
+```{r}
+combined_sentiments_long <- combined_sentiments %>%
+  pivot_longer(cols = c(bing_score, afinn_score, nrc_score, loughran_score), 
+               names_to = "lexicon", values_to = "score") %>%
+  filter(!is.na(score))  # Remove NAs
+```
+
+
+### Boxplot for Sentiment Distribution
+```{r}
+boxplot <- ggplot(combined_sentiments_long, aes(x = legislature, y = score, fill = lexicon)) +
+  geom_boxplot() +  # Boxplot to show distribution
+  facet_wrap(~lexicon, ncol = 1, scales = "free_y") +  # Facet by lexicon
+  labs(title = "Sentiment Score Distribution Per Legislature", x = "Legislature", y = "Sentiment Score") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+ 
+Displaying all the plots
+```{r, fig.width=12, fig.height=10}
+print(boxplot)
+```
+
+First, calculate the outliers (values outside the whiskers)
+```{r}
+outliers <- combined_sentiments_long %>%
+  group_by(lexicon, legislature) %>%
+  mutate(
+    Q1 = quantile(score, 0.25, na.rm = TRUE),
+    Q3 = quantile(score, 0.75, na.rm = TRUE),
+    IQR = Q3 - Q1,
+    lower_bound = Q1 - 1.5 * IQR,
+    upper_bound = Q3 + 1.5 * IQR
+  ) %>%
+  filter(score < lower_bound | score > upper_bound)  # Filter the outliers
+```
+
+Create the boxplot with outliers and labels
+```{r, fig.width=12, fig.height=10}
+ggplot(combined_sentiments_long, aes(x = legislature, y = score, fill = lexicon)) +
+  geom_boxplot() +  # Standard boxplot to show distribution
+  geom_text(data = outliers, aes(x = legislature, y = score, label = paste("Title:", resolution_code)), 
+            position = position_jitter(width = 0.2, height = 0), size = 3, hjust = -0.1) +  # Add labels for outliers
+  facet_wrap(~lexicon, ncol = 1, scales = "free_y") +  # Facet by lexicon
+  labs(title = "Sentiment Score Distribution Per Legislature", x = "Legislature", y = "Sentiment Score") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+# THE END
