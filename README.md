@@ -4,7 +4,7 @@ In Hello Everyone! This is the Readme File for the Polarisation With R workshop.
 
 This workshop focused on providing a guide to measuring polarisation in political texts.
 
-The material is modulated on the content of the Summer Institutes in Computational Social Sciences (SICSS) 2024.
+The material is modulated on the content of the [Summer Institutes in Computational Social Sciences](https://sicss.io/) (SICSS) 2024.
 
 Unai Gómez-Hernández developed and curated the material in this repo.
 
