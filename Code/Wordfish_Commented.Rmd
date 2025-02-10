@@ -1,0 +1,111 @@
+---
+title: "Polarization Analysis using Wordfish in R"
+author: "Wordfish"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 1. Install & Load Required Packages
+
+```{r}
+install.packages("usethis")
+library(usethis)
+library(devtools)
+devtools::install_github("quanteda/quanteda.textmodels", dependencies = TRUE)
+library(dplyr)
+library(readr)
+library(stringr)
+library(quanteda.textmodels)
+library(quanteda)
+library(ggplot2)
+```
+
+## 2. Load Dataset
+
+```{r}
+data <- read_csv("EU-China_resolutions.csv")  # Read CSV file
+head(data)  # View first few rows of the dataset
+```
+
+## 3. Tokenize Text and Create a Document-Feature Matrix (DFM)
+
+```{r}
+# Tokenize the full text while removing punctuation
+tokens_all <- tokens(data$full_text, remove_punct = TRUE)
+
+# Create a document-feature matrix (DFM) from the tokenized text
+dfm_all <- dfm(tokens_all)
+
+# Remove English stopwords to focus on meaningful words
+dfm_all <- dfm_remove(dfm_all, pattern = stopwords("en"))
+
+# Trim the DFM: Remove words that appear in fewer than 2 documents or have a frequency < 2
+dfm_all <- dfm_trim(dfm_all, min_termfreq = 2, min_docfreq = 2)
+
+```
+
+## 4. Fit Wordfish Model
+
+```{r}
+# Train a Wordfish scaling model using the preprocessed DFM
+wordfish_model <- textmodel_wordfish(dfm_all)
+
+# Check if the model successfully converged
+print(wordfish_model$converged)
+
+# Print the full Wordfish model details
+print(wordfish_model)
+
+# Summarize document position scores (theta) to check if they exist
+summary(wordfish_model$theta)
+
+# Assign Wordfish scores to the original data
+data$wordfish_score <- wordfish_model$theta
+
+# Display the first few Wordfish scores to confirm assignment
+head(data$wordfish_score)
+```
+
+## 5. Extract Document Positions
+
+```{r}
+# Predict document positions using the trained Wordfish model
+wordfish_scores <- predict(wordfish_model)
+
+# Store the predicted Wordfish scores in the dataset
+data$wordfish_score <- wordfish_scores
+```
+
+## 6. Save Updated Dataset
+
+```{r}
+write_csv(data, "EU-China_resolutions_with_wordfish_scores.csv")
+```
+
+## 7. Visualize the Polarization Distribution
+
+```{r}
+ggplot(data, aes(x = wordfish_score)) +
+  geom_histogram(binwidth = 0.5, fill = "green", alpha = 0.6) +  # Plot histogram
+  theme_minimal() +  # Apply minimal theme
+  labs(title = "Polarization of EU-China Resolutions (Wordfish)", x = "Wordfish Score", y = "Count")
+```
+
+## 8. Find the Document with the Lowest Wordfish Score
+
+```{r}
+# Find the index of the document with the minimum Wordfish score 
+min_index <- which.min(data$wordfish_score)
+
+# Extract the corresponding document's full text
+
+min_doc <- data[min_index, "full_text"] # Extract the document
+
+# Display the content of the document
+
+print(min_doc) # Display its content
+```
