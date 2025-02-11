@@ -16,8 +16,8 @@ The code below will allow you to install and mount the needed packages. Remember
 ```{r }
 # Uncomment the 'install.packages' lines if running the 'library' throws you an error
 #install.packages("tidyverse")   # For data manipulation
-install.packages("tidytext")    # For text tokenization and sentiment analysis
-install.packages("textdata")    # For additional sentiment lexicons
+#install.packages("tidytext")    # For text tokenization and sentiment analysis
+#install.packages("textdata")    # For additional sentiment lexicons
 
 # Load libraries
 library(tidyverse)
@@ -28,7 +28,7 @@ library(textdata)
 Now that we have all the packages we need let's import the dataset and have a look of what is inside it
 
 ```{r}
-resolutions_data <- read_csv("EU-China_resolutions.csv")
+resolutions_data <- read_csv("../Data/EU-China_resolutions.csv")
 head(resolutions_data)
 glimpse(resolutions_data)
 summary(resolutions_data)

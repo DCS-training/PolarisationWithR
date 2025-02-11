@@ -12,7 +12,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ## 1. Install & Load Required Packages
 
 ```{r}
-install.packages("usethis")
+#install.packages("usethis")
 library(usethis)
 library(devtools)
 devtools::install_github("quanteda/quanteda.textmodels", dependencies = TRUE)
@@ -27,7 +27,7 @@ library(ggplot2)
 ## 2. Load Dataset
 
 ```{r}
-data <- read_csv("EU-China_resolutions.csv")  # Read CSV file
+data <- read_csv("../Data/EU-China_resolutions.csv")  # Read CSV file
 head(data)  # View first few rows of the dataset
 ```
 

@@ -12,7 +12,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ## 1️⃣ Install & Load Required Packages
 
 ```{r}
-install.packages("LSX")  # Install LSX package if not installed
+#install.packages("LSX")  # Install LSX package if not installed
 library(LSX)
 library(quanteda)
 library(quanteda.textmodels)
@@ -24,7 +24,7 @@ library(ggplot2)
 ## 2️⃣ Load the Dataset
 
 ```{r}
-data <- read_csv("EU-China_resolutions.csv")  # Load dataset
+data <- read_csv("../Data/EU-China_resolutions.csv")  # Load dataset
 head(data)  # Preview dataset
 ```
 
